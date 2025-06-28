@@ -4,9 +4,8 @@ from .msa import ModalitySpectralAdapter
 from .umaa import UMAALayer
 
 class LMCAT(nn.Module):
-    def __init__(self, sar_channels=2, optical_channels=10, num_classes=11, 
-                 embed_dim=128, num_layers=4, num_heads=4):
-      
+    def __init__(self, sar_channels=2, optical_channels=10, 
+                 num_classes=11, embed_dim=128, num_layers=4, num_heads=4):
         super().__init__()
         
         self.sar_msa = ModalitySpectralAdapter(sar_channels, embed_dim)
@@ -20,13 +19,11 @@ class LMCAT(nn.Module):
             nn.AdaptiveAvgPool1d(1),
             nn.Flatten(),
             nn.Linear(embed_dim, num_classes)
-        
-        self.param_count = sum(p.numel() for p in self.parameters())
+        )
         
     def forward(self, sar, optical):
-       
-        sar_tokens = self.sar_msa(sar).flatten(2).permute(0,2,1)  
-        optical_tokens = self.optical_msa(optical).flatten(2).permute(0,2,1)
+        sar_tokens = self.sar_msa(sar).flatten(2).permute(0, 2, 1) 
+        optical_tokens = self.optical_msa(optical).flatten(2).permute(0, 2, 1)
         
         total_loss = 0.0
         modalities = [sar_tokens, optical_tokens]
@@ -34,15 +31,7 @@ class LMCAT(nn.Module):
             modalities, layer_loss = layer(modalities)
             total_loss += layer_loss
         
-
-        combined = torch.cat(modalities, dim=1)
+        combined = torch.cat(modalities, dim=1)  
         
-      
         logits = self.classifier(combined)
         return logits, total_loss
-    
-    def __repr__(self):
-        return (f"LMCAT(Params={self.param_count/1e6:.1f}M | "
-                f"SAR-MSA: {self.sar_msa} | "
-                f"Optical-MSA: {self.optical_msa} | "
-                f"U-MAA Layers: {len(self.umaa_layers)}")

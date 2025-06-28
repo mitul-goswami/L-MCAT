@@ -1,49 +1,88 @@
+import yaml
 import torch
-import torch.optim as optim
 from torch.utils.data import DataLoader
-from utils.logger import MetricLogger
-from model import LMCAT
+from torch.optim import AdamW
+from tqdm import tqdm
+from pathlib import Path
 
-def pretrain_lmcat(cfg, device):
+from data.sen12ms import SEN12MS
+from data.transforms import TransformCompose, RandomRotate, GaussianNoise
+from model.lmcat import LMCAT
+from utils.logger import MetricLogger
+from utils.misc import set_seed, save_checkpoint
+
+def main(config_path):
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f)
+    
+    set_seed(cfg['SEED'])
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    output_dir = Path(cfg['OUTPUT_DIR'])
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    transforms = TransformCompose([
+        RandomRotate(),
+        GaussianNoise(sigma=0.02)
+    ])
+    dataset = SEN12MS(
+        root=cfg['DATA']['ROOT'],
+        split='train',
+        bands=cfg['DATA']['BANDS'],
+        patch_size=cfg['DATA']['PATCH_SIZE'],
+        num_samples=cfg['DATA']['NUM_SAMPLES'],
+        transform=transforms
+    )
+    loader = DataLoader(
+        dataset, 
+        batch_size=cfg['OPTIM']['BATCH_SIZE'],
+        shuffle=True,
+        num_workers=4
+    )
+    
     model = LMCAT(
-        sar_channels=cfg.DATA.SAR_CHANNELS,
-        optical_channels=cfg.DATA.OPTICAL_CHANNELS,
-        embed_dim=cfg.MODEL.EMBED_DIM,
-        num_layers=cfg.MODEL.NUM_LAYERS
+        sar_channels=len(cfg['DATA']['BANDS']['SAR']),
+        optical_channels=len(cfg['DATA']['BANDS']['OPTICAL']),
+        embed_dim=cfg['MODEL']['EMBED_DIM'],
+        num_layers=cfg['MODEL']['NUM_LAYERS'],
+        num_heads=cfg['MODEL']['NUM_HEADS']
     ).to(device)
     
-    optimizer = optim.AdamW(model.parameters(), 
-                           lr=cfg.OPTIM.LR, 
-                           betas=cfg.OPTIM.BETAS,
-                           weight_decay=cfg.OPTIM.WEIGHT_DECAY)
+    optim = AdamW(
+        model.parameters(),
+        lr=cfg['OPTIM']['LR'],
+        betas=cfg['OPTIM']['BETAS'],
+        weight_decay=cfg['OPTIM']['WEIGHT_DECAY']
+    )
     
-    train_loader = get_dataloader(cfg, mode='pretrain')
-    logger = MetricLogger(cfg.OUTPUT_DIR)
+    logger = MetricLogger(output_dir, 'pretrain')
     
-    model.train()
-    for epoch in range(cfg.OPTIM.EPOCHS):
-        for batch_idx, (sar, optical) in enumerate(train_loader):
+    for epoch in range(cfg['OPTIM']['EPOCHS']):
+        model.train()
+        pbar = tqdm(loader, desc=f"Epoch {epoch+1}/{cfg['OPTIM']['EPOCHS']}")
+        
+        for sar, optical in pbar:
             sar, optical = sar.to(device), optical.to(device)
-            
             
             _, loss = model(sar, optical)
             
-            optimizer.zero_grad()
+            optim.zero_grad()
             loss.backward()
-            optimizer.step()
+            optim.step()
             
-            logger.update(loss=loss.item(), lr=optimizer.param_groups[0]['lr'])
-            
-            if batch_idx % 100 == 0:
-                logger.log_step(epoch, epoch * len(train_loader) + batch_idx)
-                
-        if epoch % 10 == 0:
-            ckpt_path = f"{cfg.OUTPUT_DIR}/ckpt_epoch{epoch}.pth"
-            torch.save({
+            logger.log('loss', loss.item())
+            pbar.set_postfix({'loss': loss.item()})
+        
+        if (epoch+1) % 10 == 0:
+            save_checkpoint({
                 'epoch': epoch,
                 'model': model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-            }, ckpt_path)
+                'optim': optim.state_dict(),
+                'config': cfg
+            }, output_dir / f'checkpoint_{epoch}.pth')
     
-    torch.save(model.state_dict(), f"{cfg.OUTPUT_DIR}/pretrained.pth")
-    return model
+    torch.save(model.state_dict(), output_dir / 'pretrained.pth')
+    logger.finalize()
+
+if __name__ == '__main__':
+    import sys
+    main(sys.argv[1])

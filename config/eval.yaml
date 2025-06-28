@@ -1,0 +1,14 @@
+DATA:
+  ROOT: './data/SEN12MS'
+  SPLIT: 'test'
+  PATCH_SIZE: 16
+
+MODEL:
+  CHECKPOINT: './output/finetune/final_model.pth'
+
+METRICS:
+  - 'accuracy'
+  - 'f1'
+  - 'kappa'
+
+OUTPUT_DIR: './output/eval'

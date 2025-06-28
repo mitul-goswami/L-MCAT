@@ -1,0 +1,22 @@
+DATA:
+  ROOT: './data/SEN12MS'
+  BANDS:
+    SAR: ['VV', 'VH']
+    OPTICAL: ['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B11', 'B12']
+  PATCH_SIZE: 16
+  NUM_SAMPLES: 10000
+
+MODEL:
+  EMBED_DIM: 128
+  NUM_LAYERS: 4
+  NUM_HEADS: 4
+
+OPTIM:
+  LR: 0.0003
+  BETAS: [0.9, 0.999]
+  WEIGHT_DECAY: 0.01
+  EPOCHS: 50
+  BATCH_SIZE: 128
+
+OUTPUT_DIR: './output/pretrain'
+SEED: 42

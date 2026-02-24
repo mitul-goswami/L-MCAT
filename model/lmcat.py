@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .msa import ModalitySpectralAdapter
-from .umaa import UMAALayer
+from .umaa import UMAALayer  # UMAA
 
 class LMCAT(nn.Module):
     def __init__(self, sar_channels=2, optical_channels=10, 
